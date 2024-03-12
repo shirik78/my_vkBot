@@ -1221,6 +1221,51 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             }
             $message  .= "Всего: " . count($month) . PHP_EOL . "Пусто: " . count($whites);
             break;
+        case "!срочная":
+        case "!":
+            $loader = new DriveAPILoader('1QVSnLSkGlgmBVwvF-atPFDL5wNUsK_R6hxUmnopRkac');
+            $table  = $loader -> loadTable('Срочная');
+            $firstWord = array_shift($set_of_text);
+            $districtsIsNotInList = [];
+            $districtsInList = [];
+            if($table !== null)
+            {
+                $message = "Приоритетные районы:\n";
+                foreach($set_of_text  as $district)
+                {
+                    if($district == "срочная")
+                    {
+                        continue;
+                    }
+                    if(DistrictNames::isDistrict($district))
+                    {
+                        array_push($districtsInList, $district);
+                    }
+                    else 
+                    {
+                        array_push($districtsIsNotInList, $district);
+                    }
+                }
+                foreach($table as $row)
+                {
+                    foreach($districtsInList as $district)
+                    {
+                        if(mb_strtolower($row[0]) == mb_strtolower($district))
+                        {
+                            $message .= "\n" . $row[1] . " " . $row[4] . "(" . $row[3] . ")";
+                        } 
+                    }
+                }
+                
+                if(count($districtsIsNotInList) > 0)
+                {
+                    $message .= "\n\nРайоны, которых не нашел в списке: " . implode(", ",$districtsIsNotInList);
+                }
+            } else
+            {
+                $message = "Table wasn't loaded";
+            }
+            break;
 
         default:
             $message="";
