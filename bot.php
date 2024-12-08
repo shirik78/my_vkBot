@@ -1,9 +1,7 @@
 <?php
 setlocale(LC_ALL, 'ru_RU.UTF-8');
 require_once __DIR__ . '/Loaders/DriveApiLoader.php';
-use Loaders\DriveAPILoader;
-
-
+require_once __DIR__ . '/Classes/DataBaseInforgOperator.php';
 require_once 'constants.php';
 require_once 'oFile.php';
 include 'vk_methods.php';
@@ -13,7 +11,8 @@ require_once 'district_names.php';
 require_once 'vendor/autoload.php';
 date_default_timezone_set("Europe/Moscow");
 
-
+use Loaders\DriveAPILoader;
+use Classes\DataBaseInforgOperator;
 
 $districts = "https://vk.cc/cbklQu";
 $dezhur_tab = "https://vk.cc/c1pCx2";
@@ -25,15 +24,15 @@ $board = new VK\Actions\Board($vkrequest);
 //$callbackApiHandler = new VK\CallbackApi\VKCallbackApiHandler; todo на потом
 
 #reading incoming request 
-$data = json_decode
-(
-    file_get_contents('php://input'),true);
+$data = json_decode(file_get_contents('php://input'),true);
 
-$type = $data['type'];
+$requestType = $data['type'];
 $object = $data["object"];
 #todo: use & override methods from SDK
-if ($data['group_id'] == VK_BOT_GROUP_ID){
-    switch ($type){
+if ($data['group_id'] == VK_BOT_GROUP_ID)
+{
+    switch ($requestType)
+    {
         case 'confirmation':
             echo CONFIRM_STRING;
             break;
@@ -49,99 +48,124 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             * $user_id = $message_object -> getFromId();
             * $date = $message_object -> getDate();
             */
-            markAsRead($incomMessage["peer_id"],$incomMessage["id"]);
+            
             $text = str_replace("/","",$incomMessage['text']);
             $text=mb_strtolower($text,"UTF-8");
-                $set_of_text = explode(" ", $text);
-                $date = $incomMessage['date'];
-                $message_id = $incomMessage['id'];
-                $conversationMessageId = $incomMessage["conversation_message_id"];
-                $chat_id = $incomMessage['peer_id'];
-                $user_id = $incomMessage['from_id'];
-                            
-                $user_info = getUserInfo($user_id);
-                $user_name = '@id'.$user_id.'('.$user_info["first_name"].')';
-                $message = '';
-                $q = '';
-                $action = $incomMessage["action"];
-                $ac_type = $action["type"];
-                
-                $dog = "@";
-                $hash = "#";
-                $hasDog = strpos($text,$dog,0);
-                $has_hash = strpos($text,$hash,0);
+            $set_of_text = explode(" ", $text);
+            $date = $incomMessage['date'];
+            $message_id = $incomMessage['id'];
+            $conversationMessageId = $incomMessage["conversation_message_id"];
+            $chat_id = $incomMessage['peer_id'];
+            $user_id = $incomMessage['from_id'];
+            markAsRead($chat_id,$message_id);
+            $user_info = getUserInfo($user_id);
+            $user_name = '@id'.$user_id.'('.$user_info["first_name"].')';
+            $message = '';
+            $q = '';
+            $action = $incomMessage["action"];
+            $ac_type = $action["type"];
+            
+            $dog = "@";
+            $hash = "#";
+        
+            $hasDog = strpos($text,$dog);
+            $has_hash = strpos($text,$hash);
+        
     
                 #обработка вложений
-                if($incomMessage['attachments'] != null){
-                    $attachments = $incomMessage['attachments'];
-                    #смотрим только первый объект
-                    $attachment = $attachments[0];
-                    $attachment_type = $attachment['type'];
-                    switch($attachment_type){
-                        case 'audio_message':
-                            $aud_message = $attachment['audio_message'];
-                            $file_url = $aud_message['link_mp3'];
-                            handleVoiceMessage($file_url,$chat_id, $date, $user_info);
-                        break;
-    
-                        case 'wall_reply':
-                            $reply = $attachment['wall_reply'];
-                            $reply_text = $reply['text'];
-                            $from_user = getUserInfo($reply['from_id']);
-                            $date = $reply['date'];
-                            $link = 'https://vk.com/wall' . $reply['owner_id'] . '_' . $reply['post_id'];
-                            #todo: $message = getMessage();
-                            $message = $incomMessage['text'].PHP_EOL.$link.PHP_EOL."@id".$reply['from_id']."(".$from_user["first_name"]." ".$from_user["last_name"].")";
-                            $attach = "wall".$reply['owner_id']."_".$reply['id'];
-                            $textArray = explode(" ", $text);
-                            $firstWord = array_shift($textArray);
-                            if(mb_strtolower($firstWord) == 'инфоргу'){
-                                handleWallReply($textArray, $attach, $chat_id);
-                            }
-                        break;
-                    }
-                } else {
-                    if($incomMessage["payload"]){
-                        $payload = json_decode($incomMessage["payload"],true);
-                        $command = explode(" ", mb_strtolower($payload["command"]));
-                        $message = getMessage($command,$chat_id,$date,$user_info);
-                    } else {
-                        if($hasDog === false){  //$message_object -> hasAtSign()
-                            if($has_hash === false){    
-                                //$message_object -> hasOctotorp()
-                                $message = getMessage($set_of_text,$chat_id,$date,$user_info, $conversationMessageId);
-                            } else {
-                                if($chat_id != WORK_CHAT){
-                                    $obj =  json_decode(getPost(implode(" ",$set_of_text)),true);
-                                    $message = $obj["message"];
-                                    $attach = $obj["attachment"];
-                                    $source = $obj["content_source"];
-                                }
-                            }
-                        } else if (strpos($set_of_text[0],"all",0)>-1){
-                         #do nothing
+            if($incomMessage['attachments'] != null)
+            {
+                $attachments = $incomMessage['attachments'];
+                #смотрим только первый объект
+                $attachment = $attachments[0];
+                $attachment_type = $attachment['type'];
+                switch($attachment_type)
+                {
+                    case 'audio_message':
+                        $aud_message = $attachment['audio_message'];
+                        $file_url = $aud_message['link_mp3'];
+                        handleVoiceMessage($file_url,$chat_id, $date, $user_info);
+                    break;
 
-                        } else {    
-                            if(strpos($set_of_text[0],'club198797031',0)>-1){
-                                $message = getMessage($set_of_text[1],$chat_id,$date,$user_info,$conversationMessageId);
-                            } else {
-                                handleMessageWithDog($incomMessage);
-                            }       
-                        }   
-                    }
+                    case 'wall_reply':
+                        $reply = $attachment['wall_reply'];
+                        $reply_text = $reply['text'];
+                        $from_user = getUserInfo($reply['from_id']);
+                        $date = $reply['date'];
+                        $link = 'https://vk.com/wall' . $reply['owner_id'] . '_' . $reply['post_id'];
+                        #todo: $message = getMessage();
+                        $message = $incomMessage['text'].PHP_EOL.$link.PHP_EOL."@id".$reply['from_id']."(".$from_user["first_name"]." ".$from_user["last_name"].")";
+                        $attach = "wall".$reply['owner_id']."_".$reply['id'];
+                        $textArray = explode(" ", $text);
+                        $firstWord = array_shift($textArray);
+                        if(mb_strtolower($firstWord) == 'инфоргу'){
+                            handleWallReply($textArray, $attach, $chat_id);
+                        }
+                    break;
+                    case 'sticker':
+                        $sticker = $attachment["sticker"];
+                        if($sticker["sticker_id"] == 77663 && $sticker["product_id"] == 1645){
+                            $message = readArrears($chat_id, $user_id);
+                        }
+                        break;
+                }
+            } 
+            else 
+            {
+                if(isset($incomMessage["payload"]))
+                {
+                    $payload = json_decode($incomMessage["payload"],true);
+                    //$command = explode(" ", mb_strtolower($payload["command"]));
+                    $message = getMessage(mb_strtolower($payload["command"]),$chat_id,$date,$user_info);
                 } 
+                else 
+                {
+                    if($hasDog === false)
+                    {  //$message_object -> hasAtSign()
+                        if($has_hash === false)
+                        {    
+                            //$message_object -> hasOctotorp()
+                            $message = getMessage($text,$chat_id,$date,$user_info, $conversationMessageId);
+                        } 
+                        else 
+                        {
+                            if($chat_id != WORK_CHAT)
+                            {
+                                $obj =  json_decode(getPost($text),true);
+                                $message = $obj["message"];
+                                $attach = $obj["attachment"];
+                                $source = $obj["content_source"];
+                            }
+                        }
+                    } 
+                    else if (strpos($set_of_text[0],"all",0)>-1)
+                    {
+                     #do nothing
+                    } 
+                    else if(strpos($set_of_text[0],'club198797031',0)>-1)
+                    {
+                        $message = getMessage($set_of_text[1],$chat_id,$date,$user_info,$conversationMessageId);
+                    } 
+                    else 
+                    {
+                        handleMessageWithDog($incomMessage);
+                    }       
+                    
+                }
+            } 
             
             
-            if($message != "" || $attach != ""){
+            if($message != "" || $attach != "")
+            {
                 setActivity($chat_id);   
                 $messageParams = array(
                     'message' => $message,
-                    'random_id' => $incomMessage["date"],   //$message_object ->getDate()
-                    'peer_id' => $incomMessage["peer_id"],  //$message_object ->getPeerId()
+                    'random_id' => $date,   //$message_object ->getDate()
+                    'peer_id' => $chat_id,  //$message_object ->getPeerId()
                     'attachment' => $attach,
                     'content_source' => $source
                 );
-               $result =  $messages -> send(VK_API_ACCESS_TOKEN, $messageParams); 
+               $messages -> send(VK_API_ACCESS_TOKEN, $messageParams); 
             }   
 
             markAsAnswered($incomMessage["peer_id"]);   //$message_object -> getPeerId()
@@ -165,17 +189,21 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             } else {
                     if(strpos($text,"all",0)> -1){}
                     handleMessageWithDog($object);
+                    #TODO   $messageParams = handleMessageWithDog($object);
+                    #       $messages -> setActivity($activityParams);
+                    #       $messages -> edit(..$messageParams);
             }
             
             if($message != ''){
                 setActivity($object["peer_id"]);
-                $message_params = array(
-                    'random_id' => $object["update_time"],
-                    'peer_id' => $object["peer_id"],
-                    'message' => $message,
-                    'attachment' => $attach
-                );
-                $messages -> send(VK_API_ACCESS_TOKEN, $message_params);
+                #$message_params = array(
+                #    'random_id' => $object["update_time"],
+                #    'peer_id' => $object["peer_id"],
+                #    'message' => $message,
+                #    'attachment' => $attach
+                #);
+                #$messages -> send(VK_API_ACCESS_TOKEN, $message_params);
+                editMyMessage($object['peer_id'],$object['id']+1, $message, $attach);
             }
             markAsAnswered($object["peer_id"]);
             
@@ -237,48 +265,62 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             
         case 'board_post_new':
             echo "ok";
-            global $messages;
             $topic = $object["topic_id"];
-            if ($topic == DOLG_TOPIC_ID){
+            if ($topic == DOLG_TOPIC_ID)
+            {
+                #запишем в  файл "dolg_...txt"
+                $date = date('jS\_F');
+                $filePath = "dolg_".$date.".txt";
+                $tmp_file = fopen($filePath, 'w');
+                fwrite($tmp_file, $object["text"]);
+                fclose($tmp_file);
+                
                 $dezh = readTable();
                 #читаем обсуждения
-                $params = array(
+                $params = array
+                (
                     'group_id' => VK_BOT_GROUP_ID,
                     'topic_id'=> DOLG_TOPIC_ID
                 );
                 $dolgResponse = $board -> getComments(VK_API_SERVICE_TOKEN, $params);
                 $comments = $dolgResponse['items'];
+                #первый  отщепляем
                 $first_comment = array_shift($comments);
                 #отправка Дежурного
-                $text = $dezh;
-                $messageParams = array(
+            
+                $messageParams = array
+                (
                     "peer_id"=> WORK_CHAT,
-                    "random_id" => 0,
-                    'message'=>$text
+                    "random_id" => $object["date"],
+                    'message'=>$dezh
                 );
                 $messages->send(VK_API_ACCESS_TOKEN, $messageParams);
                 
                 #все посты с долгами
-                foreach($comments as $comment ){
+                foreach($comments as $key => $comment )
+                {
                     $text = $comment["text"];
                     searchDistrict("гатчинский (гатчина + г. п.)", mb_strtolower($text));
                     searchDistrict("вписки",mb_strtolower($text));
-                    $messageParams = array(
+                    $messageParams = array
+                    (
                         "peer_id"=> WORK_CHAT,
-                        "random_id" => 0,
+                        "random_id" => $object["date"].$key,
                         'message'=>$text
                     );
                     $messages->send(VK_API_ACCESS_TOKEN, $messageParams);
                 }   
-
-                #$answer = sendMessage($message, $messageParams);
             }
             
             break;
 
         case 'board_post_edit':
             echo "ok";
-            global $messages;
+            $date = date('jS\_F');
+            $filePath = "dolg_".$date.".txt";
+            $tmp_file = fopen($filePath, 'w');
+            fwrite($tmp_file, $object["text"]);
+            fclose($tmp_file);
             $groups = new VK\Actions\Groups($vkrequest);
             $topic = $object["topic_id"];
             $comment_author_id = $object["from_id"];
@@ -291,8 +333,9 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
                     $name_string = "от имени Бота";
                 }
                 
-                $message = "Список долгов обновлен {$name_string}, " . date("H:i", time());
-                $messageParams = array(
+                $message = "Список долгов обновлен {$name_string}, " . date("H:i:s", time());
+                $messageParams = array
+                (
                     'peer_id' => BOT_AUTHOR,
                     'random_id' => '0',
                     'message'=> $message
@@ -311,11 +354,12 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
         case 'message_event':
             echo 'ok';
             $payload = $object["payload"];
+            $message_id = $object['conversation_message_id'];
             $user = getUserInfo($object['user_id']);
             $user_name = $user['first_name'];
             $event_data = array(
                 'type' => 'show_snackbar',
-                'text' => "Спасибо, {$user_name}, ответ отправлен &#128077;"
+                'text' => "Спасибо, {$user_name}, ответ отправлен &#128077; сообщение с кнопками я удалю)"
             );
             $js_data = json_encode($event_data);
             $params = array(
@@ -325,11 +369,25 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
                 'event_data' => $js_data
             );
 
-            $response = $vkrequest -> post('messages.sendMessageEventAnswer', VK_API_ACCESS_TOKEN, $params);
+            #$response = $messages -> sendMessageEventAnswer(VK_API_ACCESS_TOKEN, $params);
+            $vkrequest -> post('messages.sendMessageEventAnswer', VK_API_ACCESS_TOKEN, $params);
             $date = time();
+            # удаляем сообщение с кнопками
+            $deleteMessageArray = array
+            (
+                'cmids' => $message_id,
+                'group_id' => VK_BOT_GROUP_ID,
+                'delete_for_all' => 1,
+                'peer_id' => $object['user_id']
+            );
+            #$messages -> delete(VK_API_ACCESS_TOKEN, $deleteMessageArray);
+            $result=$vkrequest -> post('messages.delete', VK_API_ACCESS_TOKEN, $deleteMessageArray);
+            
             getMessage($payload["command"], $object["user_id"], $date, $user);
-
-        break;
+            break;
+            
+        case 'message_read':
+            echo 'ok';
         }
     } else {
         $gr = $data["group_id"];
@@ -355,10 +413,9 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
         global $vkrequest;
         global $messages;
         $wall = new VK\Actions\Wall($vkrequest);
-        $inforgs = getInforgs();#json_decode(sortJSONArrayByName(file_get_contents('https://docs.google.com/uc?export=download&id=1WbOhdU4DfovV2g5g_UNHl7rc-RHmJznB')),true); 
-        $la_dog_inforgs = json_decode(sortJSONArrayByName(file_get_contents("la_dog_inforgs.json")), true); #'https://docs.google.com/uc?export=download&id=1XOcUyY2Wihcu9k5i70j179J2oS0sK39h'
+        $inforgs = getInforgs();
 
-        $in_la_dog = is_in_la_dog($la_dog_inforgs, $text);
+        $in_la_dog = is_in_la_dog($text);
         
         $request = array(
             'domain'=>'lizaalert_piter',
@@ -405,14 +462,14 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
                 $replaced_infs = str_replace($symbolsToReplace, $symbolsForReplace, $infs_str);
                 foreach($inforgs as $inforg){
                     $phones = $inforg["phones"];
-                        if(str_contains($replaced_inf, $inforg['name']) || str_contains($replaced_infs, $inforg['name'])){    
-                            foreach($phones as $phone){         
-                                if(str_contains($replaced_inf ,$phone["phone"]) || str_contains($replaced_infs, $phone["phone"])){
-                                    $contains = true;
-                                    break 1;
-                                }
+                    if(str_contains($replaced_inf, $inforg['name']) || str_contains($replaced_infs, $inforg['name'])){    
+                        foreach($phones as $phone){         
+                            if(str_contains($replaced_inf ,$phone["phone"]) || str_contains($replaced_infs, $phone["phone"])){
+                                $contains = true;
+                                break 1;
                             }
                         }
+                    }
                 }
                 if(!$contains){
                     $repl_inf = ($replaced_inf == "") ? $replaced_infs:$replaced_inf;
@@ -433,7 +490,12 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
                     }
                         $message = $message."\n"."https://vk.com/photo".$owner_id."_".$id;
                 } else {
-                    $message = $post_strings[0] . "\n" . "Максимальный репост, пожалуйста! \n" . $inf_str . PHP_EOL . $photo_url . PHP_EOL . "Источник:" . PHP_EOL . "vk.com/wall" . $owner_id . "_" . $post_id;
+                    if(str_contains($post_strings[0], "UPD"))
+                    {
+                        $post_strings[0] = $post_strings[2];#"ВНИМАНИЕ! ПОМОГИТЕ НАЙТИ ЧЕЛОВЕКА/ПОДРОСТКА/РЕБЕНКА";
+                    }
+                    $message = $post_strings[0] . "\n" . "Максимальный репост, пожалуйста! \n" . 
+                    $inf_str . PHP_EOL . $photo_url . "\n\nvk.com/wall" . $owner_id . "_" . $post_id ;
                 }
                 $attach = "photo".$post['owner_id'] . "_" . $photo['id'] . "_" . $key;
             
@@ -461,7 +523,9 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
                 if(preg_match($match_string, $post_text) == 1){
                     $result = json_encode(
                         array(
-                            'message' => $post_strings[0] . PHP_EOL . $post_strings[1] . PHP_EOL . "Максимальный репост, пожалуйста!" . PHP_EOL . $photo_url . PHP_EOL . "Источник:" . PHP_EOL . "vk.com/wall" . $owner_id . "_" . $post_id,
+                            'message' => $post_strings[0] . PHP_EOL . $post_strings[1] . PHP_EOL . 
+                            "Максимальный репост, пожалуйста!" . PHP_EOL . $photo_url . 
+                            "\n\n vk.com/wall" . $owner_id . "_" . $post_id,
                             'attachment' => "photo" . $post["owner_id"] . "_" . $photo_id . "_" . $key,
                             'content_source' => json_encode(
                                 array(
@@ -473,7 +537,8 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
                     );
                     if(!$in_la_dog){
                         $mess_param = array(
-                            'message' => "Пост без инфорга не занесен в программу LA_DOG" . PHP_EOL . $text . PHP_EOL . 'https://vk.com/wall' . $owner_id . '_' . $post_id,
+                            'message' => "Пост без инфорга не занесен в программу LA_DOG" . PHP_EOL . 
+                            $text . PHP_EOL . 'vk.com/wall' . $owner_id . '_' . $post_id,
                             'random_id'=>'0',
                             'peer_id'=> BOT_AUTHOR
                         );
@@ -498,25 +563,32 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
         return $result;
     }
 
-    function is_in_la_dog($json_inforgs, $text){
-        foreach($json_inforgs as $json_inforg){
-            foreach($json_inforg["phones"] as $phone){
-                if(mb_strtolower($phone["phone"],"UTF-8") == mb_strtolower($text,"UTF-8")){
+    function is_in_la_dog($text)
+    {
+        $la_dog_inforgs = json_decode(sortJSONArrayByName(file_get_contents("la_dog_inforgs.json")), true);
+        foreach($la_dog_inforgs as $inforg)
+        {
+            if(mb_strtolower($inforg["phone"]) == mb_strtolower($text))
+            {
                     return true;
-                }
             }
         }
         return false;
     }		
-    function readDutyTable(int $month){    
+    
+    function readDutyTable(int $month)
+    {    
         $loader = new DriveAPILoader('1rrouNM3lH4n4nG7tJi8Lr0IBahrp4R0Bv26JgL2c-FI');    
         $duty_sheet = $loader->loadTable('График');    
         $year = date('Y', time());    
         $row = (($year - 2020) * 24) + $month*2; #table begin from 2020 & 2 strings per month   
-        if($duty_sheet !== null){
+        if($duty_sheet !== null)
+        {
             return  $duty_sheet[$row];    
-        } else {
-            $params = array(
+        } else 
+        {
+            $params = array
+            (
                 'format' =>'csv',
                 'gid' =>'0'
             );
@@ -526,10 +598,11 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             $csv = file_get_contents($serv.$query);
             $csv = explode("\r\n", $csv);
             $table = array_map('str_getcsv', $csv);
-            $str_month = $table[$month*2+96];    //начало с 2020, по 2 строки месяц поэтому +96 [24*4]
+            $str_month = $table[$row];
             return $str_month;
         }
     }
+    
     function check_whitespaces($month): int{    
         $whites = [];
         for($i=0; $i<2; $i++){  #delete first 2 elements
@@ -564,16 +637,20 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
         $messages->send(VK_API_ACCESS_TOKEN, $params);
     }
     
-    function getUserId($name){
+    function getUserId($name)
+    {
         global $vkrequest;
-        $name = mb_strtolower($name);
+        //$name = mb_strtolower($name);
         $json_names = json_decode(file_get_contents('vkmethods/user_names.json'), true);
         $id = $json_names[$name];
-        if(ctype_digit($id)){
+        
+        if(ctype_digit($id))
+        {
             return "id".$id;
         } else {
            $utils = new VK\Actions\Utils($vkrequest);
-           $params = array(
+           $params = array
+           (
                'screen_name'=> $id
            );
             $response = $utils->resolveScreenName(VK_API_ACCESS_TOKEN, $params);
@@ -584,30 +661,29 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
   /**
    * read Google Table for value
    **/
-  function readTable(){
-    define("HOME","http://f0793013.xsph.ru");
+  function readTable()
+  {
     global $vkrequest;
     $users = new VK\Actions\Users($vkrequest);
     $month = (int)date('m', time());
     $day_num = (int)date('d', time());
     $duty_month = readDutyTable($month);		
-    $whites = check_whitespaces($duty_month);	
-    $whites_next_month = check_nextMonth($month);
+    #$whites = check_whitespaces($duty_month);	
+    #$whites_next_month = check_nextMonth($month);
     $text2 = "";
+    $user_id=null;
     $dezh = trim($duty_month[$day_num + 1]);
-    if($dezh){
+    if($dezh)
+    {
         $user_id = trim(getUserId($dezh));
-    } else {
-    #    $user_ids = [];
-    #    $json_users = json_decode(file_get_contents('/vkmethods/user_names.json'), true);
-    #    foreach($json_users as $name => $id){
-    #        array_push($user_ids, $id);
-    #    }
-        $user_id = null;#get_random_user_id($user_ids);
+    } else 
+    {
         $text2 = "дежурить желающих не нашлось... &#128533;";
     }
-    if($user_id){
-        $user_params = array(
+    if($user_id)
+    {
+        $user_params = array
+        (
             'user_ids' => $user_id
         );
         $response = $users -> get(VK_API_SERVICE_TOKEN, $user_params);
@@ -615,27 +691,13 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
         send_accept_decline_buttons($user);
         $text2 = "дежурит &#129418; @{$user_id}({$dezh})";
     } 
-   /** $monthes = [
-    *    'января',
-    *    'февраля',
-    *    'марта',
-    *    'апреля',
-    *    'мая',
-    *    'июня',
-    *    'июля',
-    *    'августа',
-    *    'сентября',
-    *    'октября',
-    *    'ноября',
-    *    'декабря'
-    *];
 
-    *$this_month = date('n')-1;
-    **/
     $thisMonth = mktime(0,0,0,(int)date('m'));  #взяли номер месяца
-    $renamedMonth = mb_strtolower(monthRename(strftime('%B', $thisMonth))); #и переделали в название на русском в род. падеже
+     #и переделали в название на русском в род. падеже
+    $renamedMonth = mb_strtolower(monthRename(strftime('%B', $thisMonth)));
     $today = date('j') . " " . $renamedMonth;
-    if($day_num == 20 && $whites_next_month > 0){		
+    if($day_num == 20 && $whites_next_month > 0)
+    {		
         alert($renamedMonth, $whites_next_month);	
     }
     $text = "Привет, сегодня $today, " . $text2;
@@ -665,14 +727,14 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             'payload' => array(
                 'command' => 'duty_accepted'
             ),
-            'label' => 'Да'
+            'label' => 'Да, дежурю)'
         ),
         '1' => array(
             'type' => 'callback',
             'payload' => array(
                 'command' => 'duty_declined'
             ),
-            'label' => 'Нет'
+            'label' => 'Нет, не я'
         )
     );
 
@@ -684,7 +746,7 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
     $js_key = createKeyboard($actions, $colors, true);
     $user_ids = ['0' => $user_id];
 
-    safe_send_message($user_ids, 0, "Привет, {$username}, ты дежуришь?", $js_key );
+    safe_send_message($user_ids, "Привет, {$username}, ты дежуришь?", $js_key );
   }
 
 
@@ -697,7 +759,7 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
   * @return String message
   **/
 
-  function getMessage($set_of_text,$chat_id,$date,$user, $messageId=0){
+  function getMessage($text,$chat_id,$date,$user, $messageId=0){
     include 'districts.php';
     global $vkrequest;
     global $messages;
@@ -705,7 +767,7 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
     $wall = new VK\Actions\Wall($vkrequest);
     global $districts;
     global $dezhur_tab;
-    
+    $set_of_text = explode(" ", $text);
     $user_name = '@id'.$user['id'].'('.$user["first_name"].')';
     if(!is_array($set_of_text)){
         $command = $set_of_text;
@@ -722,28 +784,21 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             $result = '';
             $list = json_decode(file_get_contents('vkmethods/user_names.json'), true);
             ksort($list, SORT_LOCALE_STRING);
-            foreach($list as $name=>$id){
-                $result .= $name.": ".$id."\n";
+            foreach($list as $name=>$id)
+            {
+                $result .= $name.": @".$id."\n";
             }
             $params = array(
                 'message'=> $result,
                 'random_id'=>'0',
-                'peer_id'=>BOT_AUTHOR
+                'peer_id'=>$chat_id
             );
             $messages->send(VK_API_ACCESS_TOKEN, $params);
             break;
         case 'начать':   
-            $button_names = array(
-                '0'=>'Инфорги',
-                '1'=>'Дежурство',
-                '2'=>'Ещё'
-            );
-            $commands = array(
-                '0' =>'Инфорги',
-                '1' =>'Дежурство',
-                '2' =>'Ещё'
-            );
-           $template = createCarousel("Вот что я умею","Основные команды для работы",$commands, $button_names);
+            $button_names = ["Инфорги","Дежурство","Ещё"];
+
+           $template = createCarousel("Вот что я умею","Основные команды для работы", $button_names);
 
             $message = 'Привет!';
             
@@ -772,17 +827,9 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             break;
 
         case 'ещё':
-            $button_names = array(
-                '0'=>'Районы',
-                '1'=>'Долги',
-                '2'=>'Команды'
-            );
-            $commands = array(
-                '0' => 'Районы',
-                '1' => "Долги",
-                '2' => "Команды"
-            );
-            $template = createCarousel("Вот что я умею","Продолжение",$commands,$button_names);
+            $button_names = ["Районы","Долги","Дальше"];
+
+            $template = createCarousel("Вот что я умею","Продолжение",$button_names);
             $message = "Продолжаем";
             $params = array(
                 'message' => $message,
@@ -793,15 +840,30 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             $messages ->send(VK_API_ACCESS_TOKEN, $params);
             unset($message);
             break;
+        
+        case 'дальше':
+            $button_names = ["Вводная", "Команды"];
+            $template = createCarousel("Вот что я умею", "Продолжение", $button_names);
+            $message = "вот еще немного";
+            $params = array
+            (
+                'message' => $message,
+                'template' => $template,
+                'random_id' => $date,
+                'peer_id' => $chat_id
+            );
+            $messages -> send(VK_API_ACCESS_TOKEN, $params);
+            unset($message);
+            break;
 
         case 'duty_accepted':
-        $user = getUserInfo($chat_id, "ins");
-        $user_name = $user['first_name'] . " " . $user['last_name'];
-        $params = array(
-            'message' => "Дежурство подтверждено @id{$chat_id}({$user_name}), в " . date("H:i",time()),
-            'random_id' => 0,
-            'peer_id' => CHAT_TEST
-        );
+            $user = getUserInfo($chat_id, "ins");
+            $user_name = $user['first_name'] . " " . $user['last_name'];
+            $params = array(
+                'message' => "Дежурство подтверждено @id{$chat_id}({$user_name}), в " . date("H:i",time()),
+                'random_id' => $date,
+                'peer_id' => CHAT_TEST
+            );
             $messages -> send(VK_API_ACCESS_TOKEN, $params);
             break;
 
@@ -810,7 +872,7 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
         $user_name = $user['first_name'] . " " . $user['last_name'];
             $params = array(
                 'message' => "Дежурство отклонено @id{$chat_id}({$user_name}) в " . date("H:i", time()),
-                'random_id' => 0,
+                'random_id' => $date,
                 'peer_id' => CHAT_TEST
             );
 
@@ -869,9 +931,13 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
                     array_push($arrayPhones, $phone["phone"]);
                 }
                 $stringPhone = implode(", ", $arrayPhones);
-                
-                $message .= $inforg["name"] . " - " . $stringPhone. PHP_EOL;
+                if($inforg["vk_id"]  !== 100){
+                    $message .= "@id" . $inforg["vk_id"]  . "(" . $inforg["name"] .") - " . $stringPhone. PHP_EOL;
+                }  else {
+                    $message .= $inforg["name"] . " - " . $stringPhone  . PHP_EOL;
+                }
             }
+            
             break;
 
         case 'районы':
@@ -879,7 +945,7 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             $actions = array(
                 '0' => array(
                     'type'=>'open_link',
-                    'label'=>'&#128073; Таблица районов',
+                    'label'=>'Таблица районов',
                     'link'=>$districts
                 )
             );
@@ -917,11 +983,6 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             $response = $messages->send(VK_API_ACCESS_TOKEN,$params);
             unset($message);
             break;
-
-        case 'showbutton':
-            $user = getUserInfo($chat_id);
-            send_accept_decline_buttons($user);
-            break;
             
         case 'whois':
             $user = getUserInfo($set_of_text[1]);
@@ -932,10 +993,11 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             $message = '"инфорги" - выдам список инфоргов;
             "районы" - ссылка на таблицу с районами;
             "дежурство" - ссылка на таблицу дежурных;
-            "#фамилия_бвп" - готовый текст поста с оркой и ссылкой на оригинал в ЛАП;
+            "#фамилия_бвп" - готовый текст поста с оркой;
             "название_района" - список прилегающих к указанному;
             "@название_района" - ссылка на список групп в сообществе Бота;
-            "долги" - список невыполненных задач.(работает только в личке у Бота).';
+            "долги" - список невыполненных задач.(работает только в личке у Бота).
+            "вводная" - текст со стены ЛАП про вводную лекцию';
             break;
             
         case "вводная":
@@ -1110,34 +1172,7 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             break;
         
         case 'долги':
-            $params = array(
-                'group_id' => VK_BOT_GROUP_ID,
-                'topic_id'=> DOLG_TOPIC_ID
-            );
-
-            $dolgResponse = $board -> getComments(VK_API_SERVICE_TOKEN, $params);
-
-            $board -> getComments(VK_API_SERVICE_TOKEN, $params);
-            $comments = $dolgResponse['items'];
-            $first_comment = array_shift($comments);
-            $text = "";
-            foreach($comments as $comment){
-                $text .= $comment["text"]."\n";
-            }
-            if ($chat_id != CHAT_BOLTALKA && $chat_id != EDUCATION_CHAT && $chat_id != WORK_CHAT && $chat_id != CHAT_TEST){
-                $message = $text;
-            } else if ($chat_id == CHAT_BOLTALKA){
-                $message ="Долги смотрим в [club198797031|личке]";
-            } else if ($chat_id == WORK_CHAT || $chat_id == CHAT_TEST){
-                $params = array(
-                    'random_id'=>0,
-                    'peer_id'=>$user['id'],
-                    'message'=>"Из рабочего чата удали команду, пожалуйста.\nИ напиши ее мне))"
-                    );
-                    $messages -> send(VK_API_ACCESS_TOKEN, $params);
-            } else {
-                $message = "в чате обучения эта команда не работает &#128566;";
-            }
+           $message = readArrears($chat_id, $user_id);
             break;
         
         case "добавь":
@@ -1221,17 +1256,21 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
             }
             $message  .= "Всего: " . count($month) . PHP_EOL . "Пусто: " . count($whites);
             break;
+            
         case "!срочная":
         case "!":
             $loader = new DriveAPILoader('1QVSnLSkGlgmBVwvF-atPFDL5wNUsK_R6hxUmnopRkac');
             $table  = $loader -> loadTable('Срочная');
-            $firstWord = array_shift($set_of_text);
+            #достаемпервое  слово  после !
+            $pos  = strpos($text, "!")+1;
+            $text = substr($text, $pos+1);
+            $another_set  = explode(", ", $text);
             $districtsIsNotInList = [];
             $districtsInList = [];
             if($table !== null)
             {
                 $message = "Приоритетные районы:\n";
-                foreach($set_of_text  as $district)
+                foreach($another_set  as $district)
                 {
                     if($district == "срочная")
                     {
@@ -1248,32 +1287,117 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
                 }
                 foreach($table as $row)
                 {
-                    foreach($districtsInList as $district)
+                   foreach($districtsInList as $district)
                     {
                         if(mb_strtolower($row[0]) == mb_strtolower($district))
                         {
-                            $message .= "\n" . $row[1] . " " . $row[4] . "(" . $row[3] . ")";
+                            $message .= "\n" . $row[1] . " " . $row[4] . "(" . $row[3] . "), тел: "  .$row[6];
                         } 
                     }
                 }
                 
-                if(count($districtsIsNotInList) > 0)
+                if(count($districtsIsNotInList) > 0 && count($districtsInList) == 0)
                 {
-                    $message .= "\n\nРайоны, которых не нашел в списке: " . implode(", ",$districtsIsNotInList);
+                    $message = "\n\nРайоны, которых не нашел в списке: \n" . implode(", ",$districtsIsNotInList);
+                } else if(count($districtsIsNotInList) > 0)
+                {
+                    $message .= "\n\nРайоны, которых не нашел в списке: \n" . implode(", ",$districtsIsNotInList);
                 }
             } else
             {
                 $message = "Table wasn't loaded";
             }
-            break;
 
+            break;
+            
+        case "тг":
+            $familyName  = $set_of_text[1];
+            $message = getTelegramPost($familyName,  $chat_id);
+            break;
+        
+        case "updateinforgwithid":
+            $operator = new DatabaseInforgOperator();
+            $result = $operator->updateInforgById($set_of_text[1],$set_of_text[2],$set_of_text[3]);
+            switch($result){
+                case null:
+                    $message = "неудачная попытка подключения к БД";
+                    break;
+                case false:
+                    $message = "неправильный синтакс команды обновления, зови Антона)";
+                    break;
+                case true:
+                    $message = "Обновление прошло успешно";
+                break;
+            }
+            break;
+        case "addinforg":
+            $operator = new DatabaseInforgOperator();
+            $user = getUserInfo($set_of_text[3],"nom","photo_200"); #screen_name
+            $inforg = array
+            (
+                "name" => $set_of_text[1],
+                "phone" => $set_of_text[2],
+                "vk_id" => $user["id"],
+                "photo_200" => $user["photo_200"],
+                "screen_name" => $set_of_text[3]
+            );
+            $result = $operator->insertInforg($inforg);
+            switch($result)
+            {
+                case null:
+                    $message = "Can't connect to DB";
+                    break;
+                case false:
+                    $message = "Wrong statement, see code";
+                    break;
+                case true:
+                    $message = "Инфорг успешно добавлен";
+                    break;
+            }
+            break;
+         
+        case "deleteinforg" :
+            $operator = new DatabaseInforgOperator();
+            $result = $operator -> deleteInforg($set_of_text[1]);
+            switch($result)
+            {
+                case null:
+                    $message = "Can't connect to DB";
+                    break;
+                case false:
+                    $message = "Wrong statement, see code";
+                    break;
+                case true:
+                    $message = "Инфорг успешно удален";
+                    break;
+            }
+            break;
+            
+        case "инфорг":
+            $operator = new DatabaseInforgOperator();
+            $result = $operator->getInforgByName($set_of_text[1]);
+            $message = "";
+            if($result == null){
+                $message = "такого инфорга нет в списке";
+            }
+            foreach ($result as $inforg){
+               ($inforg['id']==100|| $inforg['id']==null) ? $message .=$inforg['name']." - ".$inforg['phone']."\n" : $message .= "@id".$inforg['id']."(".$inforg['name'].") - ".$inforg['phone']."\n";
+            }
+            break;
+        case "updateinforg":
+            $operator = new DatabaseInforgOperator();
+            if($result=$operator->updateInforgByPhone($set_of_text[1], $set_of_text[2],$set_of_text[3])){
+                $message = "обновлено успешно";
+            }
+            break;
         default:
             $message="";
     }
       return $message;
   }
 
-    function getJSONUsers(){
+    function getJSONUsers()
+    {
         $users = json_decode(file_get_contents("vkmethods/user_names.json"),true);
         $result = "";
         foreach ($users as $name => $id){
@@ -1287,21 +1411,25 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
         return $result;
     }
 
-  function addUserToJson($name, $id){
+  function addUserToJson($name, $id)
+  {
     $file_name = "vkmethods/user_names.json";
     $users_json = json_decode(file_get_contents($file_name),true);
     $users_json[$name] = $id;
-    if(file_put_contents($file_name, json_encode($users_json)) !== FALSE){
+    if(file_put_contents($file_name, json_encode($users_json)) !== FALSE)
+    {
         return "Имя {$name} добавлено в список дежурящих";
     }
     return "Не удалось добавить {$name} в лист(";
   }
 
-  function deleteUserFromJSON($name){
+  function deleteUserFromJSON($name)
+  {
     $file_name = "vkmethods/user_names.json";
     $users_json = json_decode(file_get_contents($file_name),true);
     unset($users_json[$name]);
-    if(file_put_contents($file_name, json_encode($users_json)) !== FALSE){
+    if(file_put_contents($file_name, json_encode($users_json)) !== FALSE)
+    {
         return "Юзер $name успешно удален из списка";
     }
     return "Не удалось удалить юзера из списка";
@@ -1312,7 +1440,8 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
  * @param Object $messageObject: объект сообщения ВК
  */
 
-  function handleMessageWithDog($messageObject){
+  function handleMessageWithDog($messageObject)
+  {
     global $messages;
     
     $inline = true; // button style
@@ -1439,7 +1568,8 @@ if ($data['group_id'] == VK_BOT_GROUP_ID){
  * @param String $user_name
  */
 
-function handleVoiceMessage($file_url, $chat_id, $date, $user_name){
+function handleVoiceMessage($file_url, $chat_id, $date, $user_name)
+{
     global $vkrequest;
     global $messages;
     $path = "temp/{$chat_id}_{$date}.mp3";
@@ -1451,29 +1581,37 @@ function handleVoiceMessage($file_url, $chat_id, $date, $user_name){
     $url_response = $vkrequest -> post('asr.getUploadUrl', VK_API_SERVICE_TOKEN);
     $uploadUrl = $url_response['upload_url'];
     $uploaded = uploadFile($uploadUrl, $path);
-    if($uploaded !== false){
+    if($uploaded !== false)
+    {
         $answer = json_decode($uploaded, true);
-        if($answer['error_code']){
-            $params = array(
+        if($answer['error_code'])
+        {
+            $params = array
+            (
                 'peer_id' => $chat_id,
                 'random_id' => time()
             );
             sendMessage($answer['error_msg'],$params);
-        } else {
-            $request_params = array(
+        } else 
+        {
+            $request_params = array
+            (
                 'audio' => $uploaded,
                 'model' => 'neutral'
             );
             $response = $vkrequest -> post('asr.process',VK_API_SERVICE_TOKEN, $request_params);
             $task_id = $response['task_id'];
-            $process_request = array(
+            $process_request = array
+            (
                 'task_id' => $task_id
             );
             $proc_not_finished = true;
 
-            while($proc_not_finished){
+            while($proc_not_finished)
+            {
                 $response = $vkrequest -> post('asr.checkStatus', VK_API_SERVICE_TOKEN, $process_request);
-                switch ($response['status']){
+                switch ($response['status'])
+                {
                     case 'processing':
                         time_sleep_until(time()+3);
                         continue 2;
@@ -1481,7 +1619,8 @@ function handleVoiceMessage($file_url, $chat_id, $date, $user_name){
                     case 'internal_error':
                     case 'transcoding_error':
                     case 'recognition_error':                       
-                        $messages_param = array(
+                        $messages_param = array
+                        (
                             'peer_id' => $chat_id,
                             'random_id' => time(),
                             'message' => "Ошибка распознавания, попробуйте позже"
@@ -1492,15 +1631,18 @@ function handleVoiceMessage($file_url, $chat_id, $date, $user_name){
                     case 'finished': 
                         $text = mb_strtolower(str_replace(array("?","!",",",";"," ","."), "", $response['text']), "UTF-8");
                         $message = getMessage($text, $chat_id, $date, $user_name);                    
-                        if($message != ""){
-                            $activity_params = array(
+                        if($message != "")
+                        {
+                            $activity_params = array
+                            (
                                 'peer_id' => $chat_id,
                                 'group_id' => VK_BOT_GROUP_ID,
                                 'type' => 'typing'
                             );
                             $messages -> setActivity(VK_API_ACCESS_TOKEN, $activity_params);
                             time_sleep_until(time() + 2);
-                            $message_params = array(
+                            $message_params = array
+                            (
                                 'peer_id' => $chat_id,
                                 'random_id' => $date,
                                 'message' => $message
@@ -1522,20 +1664,27 @@ function handleVoiceMessage($file_url, $chat_id, $date, $user_name){
  * @param String $filename
  */
 
-function uploadFile($url, $filename){
+function uploadFile($url, $filename)
+{
 
   $file = curl_file_create($filename,'audio/mp3',$filename);
   $ch = curl_init($url);
-  $meta = array(
+  $meta = array
+  (
     'file' => $file
   );
   curl_setopt($ch, CURLOPT_POST, true);
-  curl_setopt($ch, CURLOPT_HTTPHEADER,array('User-Agent: Opera/9.80 (Windows NT 6.2; Win64; x64) Presto/2.12.388 Version/12.15','Referer: http://shirik78.hostingem.ru','Content-Type: multipart/form-data'));
+  curl_setopt($ch, CURLOPT_HTTPHEADER,array
+    (
+      'User-Agent: Opera/9.80 (Windows NT 6.2; Win64; x64) Presto/2.12.388 Version/12.15',
+      'Referer: http://shirik78.hostingem.ru','Content-Type: multipart/form-data'
+    ));
   curl_setopt($ch, CURLOPT_POSTFIELDS, $meta);
   curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
    $result = curl_exec ($ch);
-  if (curl_errno($ch)) {
+  if (curl_errno($ch)) 
+  {
       $result = false;
   }
     curl_close ($ch);
@@ -1551,36 +1700,45 @@ function uploadFile($url, $filename){
  * @param Object $keyboard : объект клавиатуры ВК
  * @param Object $attachment: объект вложения к сообщению
  */
-function safe_send_message(array $user_ids, $random_id, $message, $keyboard = null, $attachment = null){
+function safe_send_message(array $user_ids, $message, $keyboard = null, $attachment = null)
+{
     global $messages;
+    global $object;
     $allowed_users = [];
     $disallowed_users = [];
-    foreach($user_ids as $user_id){
-        $params_for_check = array(
+    foreach($user_ids as $user_id)
+    {
+        $params_for_check = array
+        (
             'user_id' => $user_id,
             'group_id' => VK_BOT_GROUP_ID
         );
         $response = $messages -> isMessagesFromGroupAllowed(VK_API_ACCESS_TOKEN, $params_for_check);
       
-        if($response['is_allowed'] == 1){
+        if($response['is_allowed'] == 1)
+        {
             array_push($allowed_users, $user_id);
-        } else {
+        } else 
+        {
             array_push($disallowed_users, "@id" . $user_id);
         }
         time_sleep_until(time() + 2);
     }
   
-    if(count($allowed_users) > 0){
-        $request_params = array(
+    if(count($allowed_users) > 0)
+    {
+        $request_params = array
+        (
             'peer_ids' => implode(",", $allowed_users),
             'keyboard' => $keyboard,
-            'random_id' => $random_id,
+            'random_id' => $object['date'],
             'message' => $message,
             'attachment' => $attachment
         );
         $messages -> send(VK_API_ACCESS_TOKEN, $request_params);
     }
-    if(count($disallowed_users) > 0){
+    if(count($disallowed_users) > 0)
+    {
         $alert_params = array
         (
             'peer_ids' => array
@@ -1601,15 +1759,19 @@ function safe_send_message(array $user_ids, $random_id, $message, $keyboard = nu
  * или шлет отправителя))
  */
 
-function handleWallReply(array $text, $attachment, $peer_id){
+function handleWallReply(array $text, $attachment, $peer_id)
+{
     global $messages;
     $mess_is_sended = false;
     $name = array_shift($text);
     $inforgs = getInforgs();
-    foreach($inforgs as $inforg){
+    foreach($inforgs as $inforg)
+    {
         $i_name = explode(" ", $inforg['name']);
-        if($name == mb_strtolower($i_name[0]) || $name == mb_strtolower($i_name[1])){
-            if($inforg['vk_id'] != 100){
+        if($name == mb_strtolower($i_name[0]) || $name == mb_strtolower($i_name[1]))
+        {
+            if($inforg['vk_id'] != 100)
+            {
                 $params = array(
                     'random_id'=>'0',
                     'peer_id'=>$inforg['vk_id'],
@@ -1617,31 +1779,38 @@ function handleWallReply(array $text, $attachment, $peer_id){
                     'attachment'=>$attachment
                 );  
             } 
-            else{
-                $params = array(
+            else
+            {
+                $params = array
+                (
                     'random_id'=>'0',
                     'peer_id'=>'181655184',
                     'message'=>implode(" ", $text),
                     'attachment'=>$attachment
                 );
             }
-            if($result = $messages->send(VK_API_ACCESS_TOKEN, $params)){
+            if($result = $messages->send(VK_API_ACCESS_TOKEN, $params))
+            {
                 $mess_is_sended = true;
                 break 1;
             }
             
         } 
-        else {
+        else 
+        {
             continue;
         }
     }
 
-    if($mess_is_sended){
+    if($mess_is_sended)
+    {
         $message = "переслано удачно";
-    } else {
+    } else 
+    {
         $message = "Инфорг с таким именем не найден";
     }
-    $parameters = array(
+    $parameters = array
+    (
         'message'=>$message,
         'peer_id'=>$peer_id,
         'random_id'=>'0'
@@ -1654,16 +1823,19 @@ function handleWallReply(array $text, $attachment, $peer_id){
  * @return Array[Object]
  */
 
-function getInforgs(){
-   // $string_url = "https://docs.google.com/uc?export=download&id=1WbOhdU4DfovV2g5g_UNHl7rc-RHmJznB";
+function getInforgs()
+{
     $inforgs = json_decode(sortJSONArrayByName(file_get_contents("api/inforgs.json")),true);
-    for ($i=0; $i<count($inforgs); $i++){
+    for ($i=0; $i<count($inforgs); $i++)
+    {
         $inforg = $inforgs[$i];
-        if(str_contains($inforg['name'], "ё")){
+        if(str_contains($inforg['name'], "ё"))
+        {
             $new_name = str_replace("ё", "е", $inforg['name']);
             $new_phones = $inforg['phones'];
             $new_id  = $inforg['vk_id'];
-            $new_inforg = array(
+            $new_inforg = array
+            (
                 'name'=>$new_name,
                 'phones'=>$new_phones,
                 'vk_id'=>$new_id
@@ -1683,7 +1855,8 @@ function getInforgs(){
 
 function get_random_user_id(array $user_ids)
 {
-    if(count($user_ids)>0){
+    if(count($user_ids)>0)
+    {
         $random_num = rand(0, count($user_ids)-1);
         return $user_ids[$random_num];
     }
@@ -1697,36 +1870,190 @@ function get_random_user_id(array $user_ids)
  * @param $text: String
  */
 
-function searchDistrict($district, $text){
-
-    if(str_contains($text, $district)){
+function searchDistrict($district, $text)
+{
+    global $object;
+    if(str_contains($text, $district))
+    {
         sendToAuthor("Ваш район '{$district}' есть в долгах!");
-    } else {
+    } else 
+    {
         sendToAuthor("Вашего района '{$district}' в долгах нет");
     }
 }
 
 /**
  * отправляет сообщение мне в ВК
- * @param $text: String
+ * @param $text string
  */
 
-function sendToAuthor($text){
+function sendToAuthor($text)
+{
     global $messages;
-    
-    $params = array(
+    $params = array
+    (
         'peer_id'=>BOT_AUTHOR,
         'random_id'=>0,
         'message'=> $text
-        );
+    );
     $messages -> send(VK_API_ACCESS_TOKEN, $params);
 }
 
-function monthRename($month){
+/**
+ * возвращает название месяца в родительном падеже
+ * @param $month string - название месяца в именительном падеже
+ */
+function monthRename($month)
+{
     $letters = ["ь","й"];
     $lastChar = mb_substr($month, -1);
-    if($lastChar == "ь" || $lastChar == "й"){
+    if($lastChar == "ь" || $lastChar == "й")
+    {
         return str_replace($letters,"я", $month);
     }
     return $month . 'а';
+}
+
+/**
+ * void function
+ * edit VK message with
+ * @param $chatId int - chat id,
+ * @param  $messageId int - message id,
+ * @param $message string - text
+ */
+function editMyMessage($chatId, $messageId, $message, $attachment)
+{
+    global $messages;
+    $params = array
+    (
+        'peer_id'=>$chatId,
+        'message'=>$message,
+        'attachment'=> $attachment,
+        'message_id'=>$messageId,
+        'dont_parse_links'=>0,
+        'keep_snippets'=>1
+    );
+    $response = $messages->edit(VK_API_ACCESS_TOKEN, $params);
+}
+
+function getTelegramPost($familyName, $chatId)
+{
+    global $messages;
+    $headers = ['Content-Type: application/json'];
+    $url = 'https://europe-west3-lizaalert-bot-01.cloudfunctions.net/api_get_active_searches';
+    $headers = ['Content-Type: application/json']; 
+    $data = array
+    (
+        'app_id' => 'Antonio_Krot',
+        'depth_days' => 120,
+        'forum_folder_id_list' => [120],
+    );
+    $data_json = json_encode($data); 
+    $curl = curl_init();
+    curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($curl, CURLOPT_VERBOSE, 1);
+    curl_setopt($curl, CURLOPT_POSTFIELDS, $data_json);
+    curl_setopt($curl, CURLOPT_URL, $url);
+    curl_setopt($curl, CURLOPT_POST, true);
+    $result = curl_exec($curl);
+    curl_close($curl);
+    $enc_result = json_decode($result, true);
+    $zagotovka = "Если вы располагаете какой-либо информацией, просьба сообщить по телефонам ПСО \"ЛизаАлерт\":";
+    $hotLineNumber  = "Горячая линия: 88007005452";
+    $hashTag  = "#пропалчеловек";
+    $foundResults =  0;
+    foreach ($enc_result["searches"] as $search) 
+    {
+        if($search["family_name"]  == mb_ucfirst($familyName))
+        {
+            $foundResults++;
+            if($search["search_status"] != "Ищем")
+            {
+                return "Статус поиска ".$search['family_name'].": ".$search['search_status'];
+            }
+            $strings = explode("<br>", $search["content"]);
+            $imageUrl  = getForumImageUrl($search["search_id"]);
+            #send imageUrl before  return text message
+            $params = array
+            (
+                'peer_id'=>$chatId,
+                'random_id'=>time(),
+                'message'=>$imageUrl
+            );
+            $messages->send(VK_API_ACCESS_TOKEN, $params);
+            
+            $inforg  = array_pop($strings);
+            $minusa  =  array_pop($strings);
+            $text = implode("\n", [$hashTag, implode("\n",$strings), $zagotovka, $hotLineNumber, $inforg]);
+            return  $text;
+        }
+            continue;
+    }
+    if($foundResults == 0)
+    {
+        return "Фамилии " . mb_ucfirst($familyName) . " в активных поисках не найдено";
+    }
+}
+
+function getForumImageUrl($search_id)
+{
+    $url = "https://lizaalert.org/forum/viewtopic.php?f=120&t=";
+    $pageUrl = $url . $search_id;
+    $html = file_get_contents($pageUrl);
+    $dom  = new DOMDocument();
+    $dom->loadHTML($html);
+    $xpath = new DOMXPath($dom);
+    $postImage = $xpath->query('.//img[contains(@class, "postimage")]')->item(0);
+    $attr = $postImage->attributes;
+    $imageUrl = $attr[0]->value;
+    return $imageUrl;
+}
+
+function readArrears($chat_id, $user_id){
+    global $board;
+    global $messages;
+     $params = array(
+        'group_id' => VK_BOT_GROUP_ID,
+        'topic_id'=> DOLG_TOPIC_ID
+    );
+
+    $dolgResponse = $board -> getComments(VK_API_SERVICE_TOKEN, $params);
+
+    $board -> getComments(VK_API_SERVICE_TOKEN, $params);
+    $comments = $dolgResponse['items'];
+    $first_comment = array_shift($comments);
+    $message = "";
+    if ($chat_id != CHAT_BOLTALKA && $chat_id != EDUCATION_CHAT && $chat_id != WORK_CHAT 
+                                                                        && $chat_id != CHAT_TEST)
+        {
+            foreach($comments  as $comment)
+            {
+                $params =  array(
+                    "random_id"=>0,
+                    "peer_id"=>$chat_id,
+                    "message"=> $comment['text']
+                );
+                $messages->send(VK_API_ACCESS_TOKEN, $params);
+            }
+        } else if ($chat_id == CHAT_BOLTALKA)
+        {
+            $message ="Долги смотрим в [club198797031|личке]";
+        } else if ($chat_id == WORK_CHAT)
+        {
+            $params = array(
+                'random_id'=>0,
+                'peer_id'=>$user_id,
+                'message'=>"Из рабочего чата удали команду, пожалуйста.\nИ напиши ее мне))"
+                );
+                $messages -> send(VK_API_ACCESS_TOKEN, $params);
+        } else 
+        {
+            $message = "в чате обучения эта команда не работает &#128566;";
+        }
+    return $message;
+}
+
+function mb_ucfirst($string) {
+    return mb_strtoupper(mb_substr($string, 0, 1)) . mb_substr($string, 1);
 }
