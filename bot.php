@@ -563,12 +563,12 @@ if ($data['group_id'] == VK_BOT_GROUP_ID)
         return $result;
     }
 
-    function is_in_la_dog($text)
+    function is_in_la_dog($phoneNumber)
     {
         $la_dog_inforgs = json_decode(sortJSONArrayByName(file_get_contents("la_dog_inforgs.json")), true);
         foreach($la_dog_inforgs as $inforg)
         {
-            if(mb_strtolower($inforg["phone"]) == mb_strtolower($text))
+            if(mb_strtolower($inforg["phone"]) == mb_strtolower($phoneNumber))
             {
                     return true;
             }
